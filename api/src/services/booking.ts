@@ -278,26 +278,68 @@ export async function expireHolds() {
   return due.length;
 }
 
+const longDate = new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+/** 2026-10-08 -> "Thu, 8 Oct 2026" */
 function fmtDate(iso: string) {
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
+  const p = Object.fromEntries(longDate.formatToParts(new Date(`${iso}T00:00:00Z`)).map((x) => [x.type, x.value]));
+  return `${p.weekday}, ${p.day} ${p.month} ${p.year}`;
 }
 
+/** "14:00" -> "2:00 PM" */
+function fmtTime(hhmm: string) {
+  const [h, m] = hhmm.split(":").map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+
+const titleCase = (s: string) => s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+const DIVIDER = "━━━━━━━━━━━━━━━";
+
+function guestsLabel(r: { adults: number; children: number; infants: number }) {
+  return [plural(r.adults, "adult"), r.children ? plural(r.children, "child", "children") : "", r.infants ? plural(r.infants, "infant") : ""]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/** WhatsApp confirmation (uses WhatsApp *bold* / _italic_ formatting). */
 export function confirmationText(b: Booking, quote: Quote) {
-  const lines = quote.stays.map((s) => {
-    const rooms = s.rooms.length === 1 ? `1 room` : `${s.rooms.length} rooms`;
-    return `🏨 ${s.hotelName}\n   ${fmtDate(s.checkin)} → ${fmtDate(s.checkout)} · ${s.nights} night(s) · ${rooms}`;
+  const guest = b.guest as { firstName?: string } | null;
+  const first = guest?.firstName?.trim();
+
+  const stays = quote.stays.flatMap((s) => {
+    // Group identical rooms: "2 × Premium Suite (2 adults)"
+    const groups = new Map<string, number>();
+    for (const r of s.rooms) {
+      const key = `${titleCase(r.roomTypeName)} (${guestsLabel(r)})`;
+      groups.set(key, (groups.get(key) ?? 0) + 1);
+    }
+    return [
+      `🏨 *${titleCase(s.hotelName)}*`,
+      `📅 *Check-in:* ${fmtDate(s.checkin)} · ${fmtTime(config.CHECKIN_TIME)}`,
+      `📅 *Check-out:* ${fmtDate(s.checkout)} · ${fmtTime(config.CHECKOUT_TIME)}`,
+      `🌙 ${plural(s.nights, "night")}`,
+      ...[...groups].map(([label, n]) => `🛏️ ${n} × ${label}`),
+      `🍽️ ${titleCase(s.mealPlanName)}`,
+      DIVIDER,
+    ];
   });
+
   return [
-    `✅ Booking confirmed!`,
+    `✅ *Booking Confirmed!*`,
     ``,
-    `Confirmation no: ${b.confirmId}`,
-    `Reference: ${b.reference}`,
-    ...lines,
+    `Hi${first ? ` *${first}*` : ""}, your stay is booked 🎉`,
+    DIVIDER,
+    ...stays,
+    `💳 *Payment summary*`,
+    `Room & meals: ${rupees(Number(b.totalValue))}`,
+    `GST: ${rupees(Number(b.totalTax))}`,
+    `*Total paid: ${rupees(Number(b.totalAmount))}*`,
+    DIVIDER,
+    `🔖 *Confirmation no:* ${b.confirmId}`,
+    `🧾 Booking ref: ${b.reference}`,
     ``,
-    `Total paid: ${rupees(Number(b.totalAmount))} (incl. GST ${rupees(Number(b.totalTax))})`,
-    ``,
-    `Thank you for booking with us.`,
+    `_Please show the confirmation number at check-in._`,
+    `Need help? Just reply to this chat 😊`,
   ].join("\n");
 }
 
