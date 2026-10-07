@@ -15,7 +15,7 @@ Guest on WhatsApp ─▶ WAAU ─▶ n8n "HOTLIER" workflow (Gemini replies)
 |---|---|
 | `api/` | Node + Express + Prisma (PostgreSQL). The only component that talks to the PMS. |
 | `web/` | React + Vite booking page (`/b/<token>`) and admin dashboard (`/admin`). |
-| `render.yaml` | Render blueprint: API, static site, Postgres, cron job (Singapore). |
+| `render.yaml` | Render blueprint on free plans: API, static site, Postgres (Singapore). |
 
 ## Booking flow
 
@@ -24,6 +24,8 @@ Guest on WhatsApp ─▶ WAAU ─▶ n8n "HOTLIER" workflow (Gemini replies)
 3. **Check price** → `getrate` + `getinventory` per room type, then `calcgst` per hotel.
 4. **Hold rooms** → price is re-checked, then `softbook` with the calcgst lines (v1.1 GST requirement). Hold = 15 min.
 5. **Pay (test)** → synthetic transaction → `confirmsoftbook` → `confirmId` → WhatsApp confirmation via n8n.
+
+Unpaid holds are released by the API every minute (`expireHolds`, also runnable as `npm run job:expire-holds -w api`).
 
 Statuses: `HOLDING → SOFT_BOOKED → PAID → CONFIRMING → CONFIRMED` (or `SOFTBOOK_FAILED`, `HOLD_EXPIRED`, `CONFIRM_FAILED`).
 
@@ -84,10 +86,11 @@ Setup steps are on the sticky note in the workflow.
 
 ## Deploying to Render
 
-1. Push this folder to GitHub → Render → **New → Blueprint** → select the repo.
+1. Render → **New → Blueprint** → select the repo. Everything is on free plans (no card needed). Enter `PMS_BASE_URL`, `PMS_KEY`, `PMS_GROUP_ID` and `N8N_NOTIFY_URL` when asked.
 2. After the first deploy, check the real service URLs; if they differ from `walive-api.onrender.com` / `walive-book.onrender.com`, update `WEB_BASE_URL`, `CORS_ORIGINS` (env group) and `VITE_API_URL` (static site), then redeploy.
-3. Copy `CHAT_API_SECRET` from the env group into the n8n credential **WALIVE API secret** (header name `x-walive-secret`), and set `API_BASE` in the n8n *Normalize Input* node.
-4. Point the HOTLIER WAAU bot's webhook to `https://<your-n8n>/webhook/hotlier-chat`.
+3. Copy `CHAT_API_SECRET` from walive-api's environment into the n8n credential **WALIVE API secret** (header name `x-walive-secret`), and set `API_BASE` in the n8n *Normalize Input* node.
+4. Activate the n8n workflow — its *Keep API Awake* schedule pings `/health` every 10 minutes so the free API does not sleep (free services sleep after 15 idle minutes; free Postgres is deleted after 30 days).
+5. Point the HOTLIER WAAU bot's webhook to `https://<your-n8n>/webhook/hotlier-chat`.
 
 ## Production switch
 

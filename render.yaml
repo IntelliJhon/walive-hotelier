@@ -1,12 +1,38 @@
-# Render blueprint: API + booking web app + Postgres + hold-expiry cron (Singapore).
-# Render dashboard -> New -> Blueprint -> pick this repo. PMS_* and N8N_NOTIFY_URL are asked for on first deploy
-# (enter them for both walive-api and walive-expire-holds). CHAT_API_SECRET and ADMIN_PASSWORD are generated;
-# copy CHAT_API_SECRET into the n8n "WALIVE API secret" credential after the first deploy.
-envVarGroups:
-  - name: walive-shared
+# Render blueprint (free plans, Singapore): API + booking web app + Postgres.
+# Render dashboard -> New -> Blueprint -> pick this repo.
+# On first deploy Render asks for PMS_BASE_URL, PMS_KEY, PMS_GROUP_ID and N8N_NOTIFY_URL.
+# CHAT_API_SECRET and ADMIN_PASSWORD are generated; copy CHAT_API_SECRET into the n8n
+# "WALIVE API secret" credential after the first deploy.
+#
+# Free-plan notes: the API sleeps after 15 min without traffic (the n8n workflow pings /health
+# every 10 min to keep it awake); free Postgres is deleted after 30 days. Unpaid room holds are
+# released by the API itself every minute, so no cron service is needed.
+services:
+  - type: web
+    name: walive-api
+    runtime: node
+    region: singapore
+    plan: free
+    rootDir: .
+    buildCommand: npm ci && npm run build -w api
+    startCommand: npm run migrate:deploy -w api && npm run start -w api
+    healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
         value: "22"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: walive-db
+          property: connectionString
+      # Supplied by Hotelier / your n8n
+      - key: PMS_BASE_URL
+        sync: false
+      - key: PMS_KEY
+        sync: false
+      - key: PMS_GROUP_ID
+        sync: false
+      - key: N8N_NOTIFY_URL
+        sync: false
       - key: PMS_SOURCE
         value: WALIVE
       - key: PMS_RATE_TYPE
@@ -27,46 +53,11 @@ envVarGroups:
         value: admin
       - key: ADMIN_PASSWORD
         generateValue: true
-      # Public URL of the booking web app (walive-book), used in WhatsApp links.
-      # Change both if Render gives the static site a different subdomain.
+      # Public URL of the booking web app; change both if Render gives walive-book a different subdomain.
       - key: WEB_BASE_URL
         value: https://walive-book.onrender.com
       - key: CORS_ORIGINS
         value: https://walive-book.onrender.com
-
-databases:
-  - name: walive-db
-    region: singapore
-    plan: free # free Postgres is deleted after 30 days; switch to basic-256mb for longer testing
-    databaseName: walive
-    user: walive
-
-services:
-  - type: web
-    name: walive-api
-    runtime: node
-    region: singapore
-    plan: starter # stays awake so WhatsApp replies are not delayed
-    rootDir: .
-    buildCommand: npm ci && npm run build -w api
-    preDeployCommand: npm run migrate:deploy -w api
-    startCommand: npm run start -w api
-    healthCheckPath: /health
-    envVars:
-      - fromGroup: walive-shared
-      # Asked for on first deploy (supplied by Hotelier / your n8n)
-      - key: PMS_BASE_URL
-        sync: false
-      - key: PMS_KEY
-        sync: false
-      - key: PMS_GROUP_ID
-        sync: false
-      - key: N8N_NOTIFY_URL
-        sync: false
-      - key: DATABASE_URL
-        fromDatabase:
-          name: walive-db
-          property: connectionString
 
   - type: web
     name: walive-book
@@ -83,27 +74,9 @@ services:
       - key: VITE_API_URL
         value: https://walive-api.onrender.com
 
-  - type: cron
-    name: walive-expire-holds
-    runtime: node
+databases:
+  - name: walive-db
     region: singapore
-    plan: starter
-    schedule: "*/5 * * * *"
-    rootDir: .
-    buildCommand: npm ci && npm run build -w api
-    startCommand: npm run job:expire-holds -w api
-    envVars:
-      - fromGroup: walive-shared
-      # Asked for on first deploy (supplied by Hotelier / your n8n)
-      - key: PMS_BASE_URL
-        sync: false
-      - key: PMS_KEY
-        sync: false
-      - key: PMS_GROUP_ID
-        sync: false
-      - key: N8N_NOTIFY_URL
-        sync: false
-      - key: DATABASE_URL
-        fromDatabase:
-          name: walive-db
-          property: connectionString
+    plan: free
+    databaseName: walive
+    user: walive
