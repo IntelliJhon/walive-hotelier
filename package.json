@@ -1,0 +1,20 @@
+{
+  "name": "walive-hotelier",
+  "private": true,
+  "description": "WALIVE booking: WhatsApp (n8n) bot + booking web app + backend for The Hotelier PMS",
+  "workspaces": [
+    "api",
+    "web"
+  ],
+  "scripts": {
+    "db:up": "docker compose up -d db",
+    "dev:api": "npm run dev -w api",
+    "dev:web": "npm run dev -w web",
+    "build": "npm run build -w api && npm run build -w web",
+    "typecheck": "npm run typecheck -w api && npm run typecheck -w web",
+    "test": "npm run test -w api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

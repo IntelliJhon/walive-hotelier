@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: walive
+      POSTGRES_PASSWORD: walive
+      POSTGRES_DB: walive
+    ports:
+      - "5433:5432"
+    volumes:
+      - walive-db:/var/lib/postgresql/data
+
+volumes:
+  walive-db:

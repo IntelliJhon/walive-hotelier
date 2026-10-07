@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// A booking link sent to a guest on WhatsApp.
+model ChatSession {
+  id        String    @id @default(cuid())
+  phone     String
+  name      String?
+  tokenHash String    @unique
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  bookings  Booking[]
+
+  @@index([phone])
+}
+
+enum BookingStatus {
+  HOLDING
+  SOFTBOOK_FAILED
+  SOFT_BOOKED
+  PAID
+  CONFIRMING
+  CONFIRMED
+  CONFIRM_FAILED
+  HOLD_EXPIRED
+  PAYMENT_FAILED
+}
+
+model Booking {
+  id            String        @id @default(cuid())
+  /// Short code shown to the guest and staff.
+  reference     String        @unique
+  sessionId     String
+  session       ChatSession   @relation(fields: [sessionId], references: [id])
+  phone         String
+  status        BookingStatus
+  /// Guest details as entered in the web app.
+  guest         Json
+  /// The priced quote (stays, rooms, nightly GST lines) the guest accepted.
+  quote         Json
+  totalValue    Decimal       @db.Decimal(12, 2)
+  totalTax      Decimal       @db.Decimal(12, 2)
+  totalAmount   Decimal       @db.Decimal(12, 2)
+  /// totalAmount returned by the PMS softbook call (should equal totalAmount).
+  pmsTotal      Decimal?      @db.Decimal(12, 2)
+  softBookId    String?
+  confirmId     String?
+  holdExpiresAt DateTime?
+  failureReason String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  payments      Payment[]
+  pmsCalls      PmsCall[]
+  events        BookingEvent[]
+
+  @@index([phone])
+  @@index([status])
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  bookingId     String
+  booking       Booking  @relation(fields: [bookingId], references: [id])
+  gateway       String
+  transactionId String   @unique
+  amount        Decimal  @db.Decimal(12, 2)
+  status        String
+  /// Transaction object sent to confirmsoftbook.
+  raw           Json
+  createdAt     DateTime @default(now())
+}
+
+/// Every request/response exchanged with the Hotelier PMS (API key removed).
+model PmsCall {
+  id         String   @id @default(cuid())
+  bookingId  String?
+  booking    Booking? @relation(fields: [bookingId], references: [id])
+  action     String
+  request    Json
+  response   Json?
+  httpStatus Int?
+  statuscode Int?
+  message    String?
+  error      String?
+  durationMs Int
+  createdAt  DateTime @default(now())
+
+  @@index([bookingId])
+  @@index([action, createdAt])
+}
+
+model BookingEvent {
+  id        String   @id @default(cuid())
+  bookingId String
+  booking   Booking  @relation(fields: [bookingId], references: [id])
+  type      String
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([bookingId])
+}
