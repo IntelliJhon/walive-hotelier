@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { addDays, nightsOf, parseIso, toIso } from "../lib/dates.js";
 import type { Catalog } from "./catalog.js";
-import { minInventory, occupancyFor, validateSelection, type Selection } from "./pricing.js";
+import { componentsOf, minInventory, occupancyFor, validateSelection, type Selection } from "./pricing.js";
+import type { TaxedRateLine } from "../pms/types.js";
 
 const today = parseIso("2026-10-07");
 const iso = (days: number) => toIso(addDays(today, days));
@@ -84,6 +85,25 @@ describe("minInventory", () => {
   });
   it("treats nights with no band as unavailable", () => {
     expect(minInventory([{ fromDate: "07-12-2026", toDate: "08-12-2026", roomCount: 5 }], nights)).toBe(0);
+  });
+});
+
+describe("componentsOf", () => {
+  it("lists the non-zero price parts of a calcgst line, adding up to its value", () => {
+    // Premium Suite, 2 adults + 1 child, as returned by the test PMS (child tariff echoed into extraChild2Tariff).
+    const line = {
+      date: "09-10-2026", value: 9700, tax: 1611, amount: 11311, rateType: "AR001", rateCode: "000039",
+      singleTariff: 0, singlePlan: 0, doubleTariff: 6700, doublePlan: 1000, extraAdultTariff: 0, extraAdultPlan: 0,
+      extraChild1Tariff: 1000, extraChild1Plan: 0, extraChild2Tariff: 1000, extraChild2Plan: 0,
+    } as TaxedRateLine;
+    const parts = componentsOf(line);
+    expect(parts).toEqual([
+      { label: "Room · 2 adults", amount: 6700 },
+      { label: "Meals · 2 adults", amount: 1000 },
+      { label: "Child", amount: 1000 },
+      { label: "Child 2", amount: 1000 },
+    ]);
+    expect(parts.reduce((s, p) => s + p.amount, 0)).toBe(line.value);
   });
 });
 

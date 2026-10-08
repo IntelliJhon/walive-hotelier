@@ -138,6 +138,12 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; font-weight: 600; word-break: break-word; }
 
+.rate-box {
+  background: var(--surface-2); border-radius: 8px; padding: 6px 10px; margin: 6px 0;
+}
+.rate-box .line { padding: 2px 0; }
+.rate-title { margin-bottom: 2px; }
+
 details summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 14px; }
 
 /* Admin */

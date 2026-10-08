@@ -37,6 +37,26 @@ export interface QuotedNight {
   value: number;
   tax: number;
   amount: number;
+  /** Price parts the PMS used for this night (they add up to `value`). */
+  components?: { label: string; amount: number }[];
+}
+
+/** Room / meal / extra-guest parts of one calcgst line, in display order. */
+const COMPONENTS: { field: keyof TaxedRateLine; label: string }[] = [
+  { field: "singleTariff", label: "Room · 1 adult" },
+  { field: "singlePlan", label: "Meals · 1 adult" },
+  { field: "doubleTariff", label: "Room · 2 adults" },
+  { field: "doublePlan", label: "Meals · 2 adults" },
+  { field: "extraAdultTariff", label: "Extra adult" },
+  { field: "extraAdultPlan", label: "Extra adult · meals" },
+  { field: "extraChild1Tariff", label: "Child" },
+  { field: "extraChild1Plan", label: "Child · meals" },
+  { field: "extraChild2Tariff", label: "Child 2" },
+  { field: "extraChild2Plan", label: "Child 2 · meals" },
+];
+
+export function componentsOf(line: TaxedRateLine) {
+  return COMPONENTS.map(({ field, label }) => ({ label, amount: round2(Number(line[field]) || 0) })).filter((c) => c.amount > 0);
 }
 
 export interface QuotedRoom extends RoomSelection {
@@ -214,7 +234,13 @@ async function priceStay(stay: StaySelection, catalog: Catalog, bookingId?: stri
       ...room,
       roomTypeName: hotel.roomTypes.find((r) => r.roomTypeId === room.roomTypeId)!.roomTypeName,
       occupancy: occupancyFor(room),
-      nights: lines.map((l) => ({ date: toIso(parsePms(l.date)), value: l.value, tax: l.tax, amount: l.amount })),
+      nights: lines.map((l) => ({
+        date: toIso(parsePms(l.date)),
+        value: l.value,
+        tax: l.tax,
+        amount: l.amount,
+        components: componentsOf(l),
+      })),
       value: sum(lines.map((l) => l.value)),
       tax: sum(lines.map((l) => l.tax)),
       amount: sum(lines.map((l) => l.amount)),

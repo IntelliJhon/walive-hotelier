@@ -85,6 +85,8 @@ export interface QuotedNight {
   value: number;
   tax: number;
   amount: number;
+  /** Room / meal / extra-guest parts (absent on bookings made before this was added). */
+  components?: { label: string; amount: number }[];
 }
 
 export interface QuotedRoom extends RoomSel {
