@@ -14,7 +14,8 @@ export function normalisePhone(raw: string): string {
 
 /** Creates a booking link for a WhatsApp guest. Only the token's hash is stored. */
 export async function createSession(phone: string, name?: string) {
-  const token = randomBytes(24).toString("base64url");
+  // 96 random bits (16 chars) keeps the WhatsApp link short; links also expire after SESSION_MINUTES.
+  const token = randomBytes(12).toString("base64url");
   const expiresAt = new Date(Date.now() + config.SESSION_MINUTES * 60_000);
   await prisma.chatSession.create({
     data: { phone: normalisePhone(phone), name: name?.trim() || null, tokenHash: hash(token), expiresAt },
