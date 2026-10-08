@@ -24,17 +24,22 @@ chatRoutes.get("/bookings", async (req, res) => {
 /** Hotels and room types as plain text for the AI agent's prompt. */
 chatRoutes.get("/context", async (_req, res) => {
   const c = await getCatalog();
+  const tc = (s: string) => s.toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase());
+  const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
   const lines = c.hotels.map((h) => {
     const rooms = h.roomTypes
-      .map((r) => `   - ${r.roomTypeName} (up to ${r.maximumPax} guests: ${r.maxAdult} adults, ${r.maxChildren} children)`)
+      .map(
+        (r) =>
+          `   - ${tc(r.roomTypeName)} (up to ${n(r.maximumPax, "guest", "guests")}: ${n(r.maxAdult, "adult", "adults")}, ${n(r.maxChildren, "child", "children")})`,
+      )
       .join("\n");
-    return `• ${h.hotelName}${h.hotelType ? ` (${h.hotelType})` : ""}\n${rooms}`;
+    return `• ${tc(h.hotelName)}${h.hotelType ? ` (${h.hotelType})` : ""}\n${rooms}`;
   });
   const text = [
     "HOTELS",
     ...lines,
     "",
-    `MEAL PLANS: ${c.mealPlans.map((m) => `${m.code} = ${m.name}`).join(", ")}`,
+    `MEAL PLANS: ${c.mealPlans.map((m) => `${m.code} = ${tc(m.name)}`).join(", ")}`,
     `BOOKING LIMITS: up to ${Math.max(...c.hotels.map((h) => h.maxRoomNights || 0))} nights and ${Math.max(...c.hotels.map((h) => h.bookableRooms || 0))} rooms per hotel per booking.`,
   ].join("\n");
   res.json({ text, hotels: c.hotels.map((h) => ({ hotelId: h.hotelId, hotelName: h.hotelName })) });
