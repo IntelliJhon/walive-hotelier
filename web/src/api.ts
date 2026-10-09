@@ -152,6 +152,8 @@ export interface SessionInfo {
   expiresAt: string;
   expired: boolean;
   testMode: boolean;
+  /** Bot's WhatsApp number (digits) or "" when not configured. */
+  botWhatsApp?: string;
   holdMinutes: number;
   bookings: Booking[];
 }

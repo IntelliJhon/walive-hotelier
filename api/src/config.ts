@@ -21,6 +21,11 @@ const Env = z.object({
 
   CHAT_API_SECRET: z.string().min(16, "CHAT_API_SECRET must be at least 16 characters"),
   N8N_NOTIFY_URL: z.string().url().or(z.literal("")).default(""),
+  /** The bot's WhatsApp number (digits with country code); the web app links back to it after booking. */
+  BOT_WHATSAPP_NUMBER: z
+    .string()
+    .default("")
+    .transform((s) => s.replace(/\D/g, "")),
 
   ADMIN_USER: z.string().min(1),
   ADMIN_PASSWORD: z.string().min(8, "ADMIN_PASSWORD must be at least 8 characters"),

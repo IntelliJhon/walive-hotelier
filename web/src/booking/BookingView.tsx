@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError, type Booking, type GuestApi } from "../api";
 import { money } from "../format";
 import { QuoteView } from "./QuoteView";
@@ -19,15 +19,38 @@ interface Props {
   booking: Booking;
   api: GuestApi;
   testMode: boolean;
+  /** Bot's WhatsApp number; when set, the guest is sent back to the chat after confirming. */
+  botWhatsApp?: string;
   onChange: (b: Booking) => void;
   onNew: () => void;
 }
 
-export function BookingView({ booking, api, testMode, onChange, onNew }: Props) {
+const REDIRECT_SECONDS = 5;
+
+export function BookingView({ booking, api, testMode, botWhatsApp, onChange, onNew }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const countdown = useCountdown(booking.status === "SOFT_BOOKED" ? booking.holdExpiresAt : null);
   const holdOver = countdown !== null && countdown.ms === 0;
+
+  // Back to the WhatsApp bot: automatic only when the booking was confirmed on this screen just now
+  // (not when an old confirmed booking is reopened), and the guest can cancel it.
+  const chatUrl = botWhatsApp ? `https://wa.me/${botWhatsApp}` : "";
+  const initialStatus = useRef(booking.status);
+  const justConfirmed = booking.status === "CONFIRMED" && initialStatus.current !== "CONFIRMED";
+  const [redirectIn, setRedirectIn] = useState<number | null>(null);
+  useEffect(() => {
+    if (justConfirmed && chatUrl) setRedirectIn(REDIRECT_SECONDS);
+  }, [justConfirmed, chatUrl]);
+  useEffect(() => {
+    if (redirectIn === null) return;
+    if (redirectIn <= 0) {
+      window.location.href = chatUrl;
+      return;
+    }
+    const t = setTimeout(() => setRedirectIn((s) => (s === null ? null : s - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [redirectIn, chatUrl]);
 
   // While the PMS confirmation is in flight, poll until it settles.
   useEffect(() => {
@@ -64,6 +87,21 @@ export function BookingView({ booking, api, testMode, onChange, onNew }: Props) 
             <dt>Total paid</dt>
             <dd>{money(booking.totalAmount)}</dd>
           </dl>
+          {chatUrl && (
+            <div style={{ marginTop: 16 }}>
+              <a className="btn-whatsapp" href={chatUrl} onClick={() => setRedirectIn(null)}>
+                💬 Back to WhatsApp
+              </a>
+              {redirectIn !== null && redirectIn > 0 && (
+                <p className="muted small" style={{ marginTop: 8 }}>
+                  Taking you back to the chat in {redirectIn}s ·{" "}
+                  <button className="btn-link small" onClick={() => setRedirectIn(null)}>
+                    Stay here
+                  </button>
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 

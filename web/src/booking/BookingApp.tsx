@@ -278,7 +278,14 @@ export function BookingApp() {
       )}
 
       {step === "booking" && booking && (
-        <BookingView booking={booking} api={api} testMode={session.testMode} onChange={onBookingChange} onNew={startNew} />
+        <BookingView
+          booking={booking}
+          api={api}
+          testMode={session.testMode}
+          botWhatsApp={session.botWhatsApp}
+          onChange={onBookingChange}
+          onNew={startNew}
+        />
       )}
     </div>
   );

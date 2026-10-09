@@ -27,6 +27,7 @@ publicRoutes.get("/session", async (req: GuestRequest, res) => {
     expiresAt: s.expiresAt,
     expired: s.expired,
     testMode: config.PAYMENT_MODE === "test",
+    botWhatsApp: config.BOT_WHATSAPP_NUMBER,
     holdMinutes: config.HOLD_MINUTES,
     bookings: bookings.map(publicBooking),
   });

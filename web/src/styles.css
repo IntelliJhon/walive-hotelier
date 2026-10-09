@@ -110,7 +110,13 @@ button {
 button:disabled { opacity: 0.55; cursor: not-allowed; }
 .btn-primary { background: var(--accent); color: var(--accent-contrast); width: 100%; }
 .btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border); }
-.btn-link { background: none; border: none; color: var(--accent); padding: 6px 0; min-height: 0; }
+.btn-whatsapp {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%;
+  min-height: 46px; border-radius: 10px; background: #25d366; color: #0b2e17;
+  font-weight: 700; text-decoration: none;
+}
+.btn-whatsapp:hover { filter: brightness(0.95); }
+.btn-link {background: none; border: none; color: var(--accent); padding: 6px 0; min-height: 0; }
 .btn-danger-link { background: none; border: none; color: var(--danger); padding: 4px 0; min-height: 0; font-size: 13px; }
 .actions { display: flex; gap: 8px; margin-top: 16px; }
 .actions > * { flex: 1; }
