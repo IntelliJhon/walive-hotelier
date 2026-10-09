@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ApiError, guestApi, type Booking, type CatalogData, type GuestForm, type Quote, type SessionInfo, type StaySel } from "../api";
-import { addDaysIso, fmtDate, money } from "../format";
+import { addDaysIso, fmtDate, money, plural } from "../format";
 import { BookingView } from "./BookingView";
 import { emptyGuest, GuestFormView } from "./GuestFormView";
 import { QuoteView } from "./QuoteView";
@@ -262,7 +262,7 @@ export function BookingApp() {
       {step === "guest" && quote && (
         <>
           <h1>Almost done</h1>
-          <p className="muted">We’ll hold your rooms for {session.holdMinutes} minutes while you pay.</p>
+          <p className="muted">We’ll hold your rooms for {plural(session.holdMinutes, "minute")} while you pay.</p>
           {error && <div className="alert error">{error}</div>}
           <GuestFormView
             catalog={catalog}
