@@ -3,7 +3,16 @@ import { config } from "../config.js";
 import { AppError } from "../errors.js";
 import { addDays, diffDays, isoToPms, nightsOf, parseIso, parsePms, toIso, toPms, todayIst } from "../lib/dates.js";
 import { pms } from "../pms/client.js";
-import type { CalcGstRoomTypeIn, Occupancy, RateBand, RateComponents, SoftBookHotel, TaxedRateLine } from "../pms/types.js";
+import type {
+  CalcGstRoomTypeIn,
+  Occupancy,
+  PmsHotel,
+  PmsRoomType,
+  RateBand,
+  RateComponents,
+  SoftBookHotel,
+  TaxedRateLine,
+} from "../pms/types.js";
 import { getCatalog, type Catalog } from "./catalog.js";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
@@ -114,6 +123,44 @@ export function occupancyFor(room: RoomSelection): Occupancy {
   };
 }
 
+/**
+ * Per-room guest limits: the stricter of the hotel-level settings (hoteldetails: maxPax, maxAdult,
+ * maxChildren, maxInfant) and the room type's own (roomtypesdetails). For adults/pax a 0 means
+ * "not set"; for children/infants 0 means "not allowed".
+ */
+export function roomLimits(hotel: PmsHotel, rt: PmsRoomType) {
+  const cap = (a: number, b: number) => Math.min(a > 0 ? a : Infinity, b > 0 ? b : Infinity);
+  const maxAdult = cap(hotel.maxAdult, rt.maxAdult);
+  const maxPax = cap(hotel.maxPax, rt.maximumPax);
+  return {
+    maxAdult: Number.isFinite(maxAdult) ? maxAdult : 10,
+    maxPax: Number.isFinite(maxPax) ? maxPax : 10,
+    maxChildren: Math.min(hotel.maxChildren, rt.maxChildren),
+    maxInfant: Math.min(hotel.maxInfant, rt.maxInfant),
+  };
+}
+
+/**
+ * Keeps only the rate parts used by this room's occupancy (e.g. single room -> single tariff/plan only).
+ * The PMS mis-prices lines that carry unused parts (it echoed the child tariff into extraChild2).
+ */
+export function selectedRates(rate: RateComponents, occ: Occupancy): RateComponents {
+  const keep = (on: boolean, v: number) => (on ? v : 0);
+  return {
+    ...rate,
+    singleTariff: keep(occ.single > 0, rate.singleTariff),
+    singlePlan: keep(occ.single > 0, rate.singlePlan),
+    doubleTariff: keep(occ.double > 0, rate.doubleTariff),
+    doublePlan: keep(occ.double > 0, rate.doublePlan),
+    extraAdultTariff: keep(occ.extraAdult > 0, rate.extraAdultTariff),
+    extraAdultPlan: keep(occ.extraAdult > 0, rate.extraAdultPlan),
+    extraChild1Tariff: keep(occ.extraChild1 > 0, rate.extraChild1Tariff),
+    extraChild1Plan: keep(occ.extraChild1 > 0, rate.extraChild1Plan),
+    extraChild2Tariff: keep(occ.extraChild2 > 0, rate.extraChild2Tariff),
+    extraChild2Plan: keep(occ.extraChild2 > 0, rate.extraChild2Plan),
+  };
+}
+
 /** Checks the selection against hotel and room-type limits from the PMS. */
 export function validateSelection(sel: Selection, catalog: Catalog, today: Date = todayIst()): void {
   const fail = (msg: string) => {
@@ -131,7 +178,8 @@ export function validateSelection(sel: Selection, catalog: Catalog, today: Date 
       return fail(`${label}Invalid dates.`);
     }
     const nights = diffDays(checkin, checkout);
-    if (checkin < today) fail(`${label}Check-in cannot be in the past.`);
+    // Same-day bookings are not allowed: check-in starts from tomorrow.
+    if (checkin <= today) fail(`${label}Check-in must be from tomorrow onwards.`);
     if (nights < 1) fail(`${label}Check-out must be after check-in.`);
     if (hotel.maxRoomNights && nights > hotel.maxRoomNights)
       fail(`${label}${hotel.hotelName} allows at most ${hotel.maxRoomNights} nights per booking.`);
@@ -145,11 +193,12 @@ export function validateSelection(sel: Selection, catalog: Catalog, today: Date 
       const rl = `${label}Room ${ri + 1}: `;
       const rt = hotel.roomTypes.find((r) => r.roomTypeId === room.roomTypeId);
       if (!rt) return fail(`${rl}Unknown room type.`);
-      if (rt.maxAdult && room.adults > rt.maxAdult) fail(`${rl}${rt.roomTypeName} allows at most ${rt.maxAdult} adults.`);
-      if (room.children > rt.maxChildren) fail(`${rl}${rt.roomTypeName} allows at most ${rt.maxChildren} children.`);
-      if (room.infants > rt.maxInfant) fail(`${rl}${rt.roomTypeName} allows at most ${rt.maxInfant} infants.`);
-      if (rt.maximumPax && room.adults + room.children > rt.maximumPax)
-        fail(`${rl}${rt.roomTypeName} allows at most ${rt.maximumPax} guests (adults + children).`);
+      const lim = roomLimits(hotel, rt);
+      if (room.adults > lim.maxAdult) fail(`${rl}${rt.roomTypeName} allows at most ${lim.maxAdult} adults per room.`);
+      if (room.children > lim.maxChildren) fail(`${rl}${rt.roomTypeName} allows at most ${lim.maxChildren} children per room.`);
+      if (room.infants > lim.maxInfant) fail(`${rl}${rt.roomTypeName} allows at most ${lim.maxInfant} infants per room.`);
+      if (room.adults + room.children > lim.maxPax)
+        fail(`${rl}${rt.roomTypeName} allows at most ${lim.maxPax} guests per room (adults + children).`);
     });
   });
 }
@@ -204,16 +253,17 @@ async function priceStay(stay: StaySelection, catalog: Catalog, bookingId?: stri
   // One calcgst entry per physical room (see occupancyFor).
   const entries: CalcGstRoomTypeIn[] = stay.rooms.map((room) => {
     const bands = perType.get(room.roomTypeId)!;
+    const occ = occupancyFor(room);
     return {
       roomTypeId: room.roomTypeId,
-      ...occupancyFor(room),
+      ...occ,
       rates: nights.map((night) => {
         const rate = rateFor(bands, night);
         if (!rate) {
           const name = hotel.roomTypes.find((r) => r.roomTypeId === room.roomTypeId)!.roomTypeName;
           throw new AppError(409, "NO_RATE", `No rate is set for ${name} at ${hotel.hotelName} on ${toPms(night)}.`);
         }
-        return { date: toPms(night), ...rate };
+        return { date: toPms(night), ...selectedRates(rate, occ) };
       }),
     };
   });
@@ -265,7 +315,8 @@ async function priceStay(stay: StaySelection, catalog: Catalog, bookingId?: stri
 
 /** Prices a selection live from the PMS (rates, availability and GST). */
 export async function priceSelection(sel: Selection, bookingId?: string): Promise<Quote> {
-  const catalog = await getCatalog();
+  // Validate against the hotel's current settings (the hotel can change limits at any time).
+  const catalog = await getCatalog({ maxAgeMs: 15_000 });
   validateSelection(sel, catalog);
   const stays = await Promise.all(sel.stays.map((s) => priceStay(s, catalog, bookingId)));
   return {

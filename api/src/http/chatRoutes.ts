@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { bookingsForPhone } from "../services/booking.js";
 import { getCatalog } from "../services/catalog.js";
+import { roomLimits } from "../services/pricing.js";
 import { createSession, normalisePhone } from "../services/sessions.js";
 import { requireChatSecret } from "./auth.js";
 
@@ -28,10 +29,10 @@ chatRoutes.get("/context", async (_req, res) => {
   const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
   const lines = c.hotels.map((h) => {
     const rooms = h.roomTypes
-      .map(
-        (r) =>
-          `   - ${tc(r.roomTypeName)} (up to ${n(r.maximumPax, "guest", "guests")}: ${n(r.maxAdult, "adult", "adults")}, ${n(r.maxChildren, "child", "children")})`,
-      )
+      .map((r) => {
+        const lim = roomLimits(h, r);
+        return `   - ${tc(r.roomTypeName)} (up to ${n(lim.maxPax, "guest", "guests")} per room: ${n(lim.maxAdult, "adult", "adults")}, ${n(lim.maxChildren, "child", "children")})`;
+      })
       .join("\n");
     return `• ${tc(h.hotelName)}${h.hotelType ? ` (${h.hotelType})` : ""}\n${rooms}`;
   });

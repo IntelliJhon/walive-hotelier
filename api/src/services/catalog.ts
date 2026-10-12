@@ -9,7 +9,9 @@ export interface Catalog {
   loadedAt: string;
 }
 
-const TTL_MS = 6 * 60 * 60 * 1000; // master data rarely changes
+// Hotel limits (bookableRooms, maxRoomNights, max guests...) can be changed in the PMS at any time,
+// so the cached copy is kept short. Pricing re-checks with an even fresher copy.
+const TTL_MS = 60 * 1000;
 let cached: { at: number; data: Catalog } | undefined;
 let loading: Promise<Catalog> | undefined;
 
@@ -38,8 +40,9 @@ async function load(): Promise<Catalog> {
 }
 
 /** Hotels, room types and lookup lists, cached in memory. */
-export async function getCatalog(force = false): Promise<Catalog> {
-  if (!force && cached && Date.now() - cached.at < TTL_MS) return cached.data;
+export async function getCatalog(opts: boolean | { maxAgeMs?: number } = false): Promise<Catalog> {
+  const maxAge = opts === true ? 0 : typeof opts === "object" && opts.maxAgeMs !== undefined ? opts.maxAgeMs : TTL_MS;
+  if (cached && Date.now() - cached.at < maxAge) return cached.data;
   loading ??= load()
     .then((data) => {
       cached = { at: Date.now(), data };

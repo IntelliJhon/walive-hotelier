@@ -6,7 +6,7 @@ import { prisma } from "../db.js";
 import { AppError } from "../errors.js";
 import { createBooking, getBookingForSession, GuestDetails, payTest, publicBooking } from "../services/booking.js";
 import { getCatalog } from "../services/catalog.js";
-import { priceSelection, publicQuote, Selection } from "../services/pricing.js";
+import { priceSelection, publicQuote, roomLimits, Selection } from "../services/pricing.js";
 import { requireGuest, type GuestRequest } from "./auth.js";
 
 export const publicRoutes = Router();
@@ -44,14 +44,18 @@ publicRoutes.get("/catalog", async (_req, res) => {
       bookableRooms: h.bookableRooms,
       maxRoomNights: h.maxRoomNights,
       maxBookingDays: h.maxBookingDays,
-      roomTypes: h.roomTypes.map((r) => ({
-        roomTypeId: r.roomTypeId,
-        roomTypeName: r.roomTypeName,
-        maximumPax: r.maximumPax,
-        maxAdult: r.maxAdult,
-        maxChildren: r.maxChildren,
-        maxInfant: r.maxInfant,
-      })),
+      // Per-room limits already combine the hotel-level and room-type settings.
+      roomTypes: h.roomTypes.map((r) => {
+        const lim = roomLimits(h, r);
+        return {
+          roomTypeId: r.roomTypeId,
+          roomTypeName: r.roomTypeName,
+          maximumPax: lim.maxPax,
+          maxAdult: lim.maxAdult,
+          maxChildren: lim.maxChildren,
+          maxInfant: lim.maxInfant,
+        };
+      }),
     })),
     mealPlans: c.mealPlans,
     salutations: c.salutations,

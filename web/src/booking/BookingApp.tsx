@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ApiError, guestApi, type Booking, type CatalogData, type GuestForm, type Quote, type SessionInfo, type StaySel } from "../api";
-import { addDaysIso, fmtDate, money, plural } from "../format";
+import { addDaysIso, fmtDate, money, plural, todayIso } from "../format";
 import { BookingView } from "./BookingView";
 import { emptyGuest, GuestFormView } from "./GuestFormView";
 import { QuoteView } from "./QuoteView";
@@ -64,7 +64,16 @@ export function BookingApp() {
         setSession(s);
         setCatalog(c);
         if (!c.hotels.length) return setLoadError("No hotels are available for booking right now.");
-        setStays((prev) => (prev.length && prev.every((p) => c.hotels.some((h) => h.hotelId === p.hotelId)) ? prev : [newStay(c)]));
+        // Reuse the saved draft only if it still fits: known hotels, check-in from tomorrow,
+        // and a single stay when the group has only one hotel.
+        setStays((prev) => {
+          const today = todayIso();
+          const usable =
+            prev.length > 0 &&
+            (c.hotels.length > 1 || prev.length === 1) &&
+            prev.every((p) => c.hotels.some((h) => h.hotelId === p.hotelId) && p.checkin > today);
+          return usable ? prev : [newStay(c)];
+        });
         const active = s.bookings.find((b) => ["SOFT_BOOKED", "PAID", "CONFIRMING"].includes(b.status));
         if (active) {
           setBooking(active);
@@ -225,8 +234,15 @@ export function BookingApp() {
               onRemove={stays.length > 1 ? () => setStays(stays.filter((_, j) => j !== i)) : undefined}
             />
           ))}
-          {stays.length < 5 && (
-            <button className="btn-link" onClick={() => setStays([...stays, newStay(catalog, undefined, stays[stays.length - 1]?.checkout ?? addDaysIso(stays[0].checkin, 1))])}>
+          {/* Only offered when the group has more than one hotel; defaults to a hotel not yet chosen. */}
+          {catalog.hotels.length > 1 && stays.length < 5 && (
+            <button
+              className="btn-link"
+              onClick={() => {
+                const next = catalog.hotels.find((h) => !stays.some((s) => s.hotelId === h.hotelId)) ?? catalog.hotels[0];
+                setStays([...stays, newStay(catalog, next.hotelId, stays[stays.length - 1]?.checkout ?? addDaysIso(stays[0].checkin, 1))]);
+              }}
+            >
               + Add another hotel
             </button>
           )}

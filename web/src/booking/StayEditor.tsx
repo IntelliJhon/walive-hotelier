@@ -45,7 +45,8 @@ export function StayEditor({ index, stay, catalog, showTitle, onChange, onRemove
   };
 
   const changeCheckin = (checkin: string) => {
-    if (!checkin) return;
+    // Same-day check-in is not allowed (typed dates bypass the picker's min).
+    if (!checkin || checkin <= today) return;
     const keep = nightsBetween(checkin, stay.checkout);
     set({ checkin, checkout: keep >= 1 && keep <= maxNights ? stay.checkout : addDaysIso(checkin, 1) });
   };
@@ -77,7 +78,7 @@ export function StayEditor({ index, stay, catalog, showTitle, onChange, onRemove
       <div className="row">
         <div className="field">
           <label htmlFor={`in-${index}`}>Check-in</label>
-          <input id={`in-${index}`} type="date" value={stay.checkin} min={today} max={maxCheckin} onChange={(e) => changeCheckin(e.target.value)} />
+          <input id={`in-${index}`} type="date" value={stay.checkin} min={addDaysIso(today, 1)} max={maxCheckin} onChange={(e) => changeCheckin(e.target.value)} />
         </div>
         <div className="field">
           <label htmlFor={`out-${index}`}>Check-out</label>

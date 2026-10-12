@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addDays, nightsOf, parseIso, toIso } from "../lib/dates.js";
 import type { Catalog } from "./catalog.js";
-import { componentsOf, minInventory, occupancyFor, validateSelection, type Selection } from "./pricing.js";
+import { componentsOf, minInventory, occupancyFor, selectedRates, validateSelection, type Selection } from "./pricing.js";
 import type { TaxedRateLine } from "../pms/types.js";
 
 const today = parseIso("2026-10-07");
@@ -51,8 +51,15 @@ describe("validateSelection", () => {
   it("accepts a valid stay", () => {
     expect(() => validateSelection(sel(), catalog, today)).not.toThrow();
   });
-  it("rejects past check-in", () => {
-    expect(() => validateSelection(sel({ checkin: iso(-1), checkout: iso(1) }), catalog, today)).toThrow(/past/);
+  it("rejects past and same-day check-in", () => {
+    expect(() => validateSelection(sel({ checkin: iso(-1), checkout: iso(1) }), catalog, today)).toThrow(/from tomorrow/);
+    expect(() => validateSelection(sel({ checkin: iso(0), checkout: iso(1) }), catalog, today)).toThrow(/from tomorrow/);
+    expect(() => validateSelection(sel({ checkin: iso(1), checkout: iso(2) }), catalog, today)).not.toThrow();
+  });
+  it("applies the stricter of hotel-level and room-type guest limits", () => {
+    const strict: Catalog = { ...catalog, hotels: [{ ...catalog.hotels[0], maxAdult: 2, maxPax: 3, maxChildren: 0 }] };
+    expect(() => validateSelection(sel({ rooms: [{ roomTypeId: "02", adults: 3, children: 0, infants: 0 }] }), strict, today)).toThrow(/2 adults/);
+    expect(() => validateSelection(sel({ rooms: [{ roomTypeId: "02", adults: 2, children: 1, infants: 0 }] }), strict, today)).toThrow(/0 children/);
   });
   it("rejects zero nights and too many nights", () => {
     expect(() => validateSelection(sel({ checkin: iso(3), checkout: iso(3) }), catalog, today)).toThrow(/after check-in/);
@@ -85,6 +92,19 @@ describe("minInventory", () => {
   });
   it("treats nights with no band as unavailable", () => {
     expect(minInventory([{ fromDate: "07-12-2026", toDate: "08-12-2026", roomCount: 5 }], nights)).toBe(0);
+  });
+});
+
+describe("selectedRates", () => {
+  const rate = {
+    singleTariff: 6500, singlePlan: 500, doubleTariff: 6700, doublePlan: 1000, extraAdultTariff: 1500, extraAdultPlan: 500,
+    extraChild1Tariff: 1000, extraChild1Plan: 250, extraChild2Tariff: 0, extraChild2Plan: 0, rateType: "AR001", rateCode: "000039",
+  };
+  it("keeps only the parts used by the room's occupancy", () => {
+    const r = selectedRates(rate, occupancyFor({ roomTypeId: "02", adults: 2, children: 1, infants: 0 }));
+    expect(r).toMatchObject({ singleTariff: 0, singlePlan: 0, doubleTariff: 6700, doublePlan: 1000, extraAdultTariff: 0, extraChild1Tariff: 1000, extraChild1Plan: 250, rateType: "AR001" });
+    const s = selectedRates(rate, occupancyFor({ roomTypeId: "02", adults: 1, children: 0, infants: 0 }));
+    expect(s).toMatchObject({ singleTariff: 6500, singlePlan: 500, doubleTariff: 0, doublePlan: 0, extraChild1Tariff: 0 });
   });
 });
 
