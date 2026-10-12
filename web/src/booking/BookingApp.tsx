@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ApiError, guestApi, type Booking, type CatalogData, type GuestForm, type Quote, type SessionInfo, type StaySel } from "../api";
 import { addDaysIso, fmtDate, money, plural, todayIso } from "../format";
 import { BookingView } from "./BookingView";
 import { emptyGuest, GuestFormView } from "./GuestFormView";
 import { QuoteView } from "./QuoteView";
-import { newStay, StayEditor, titleCase } from "./StayEditor";
+import { fitStay, newStay, StayEditor, titleCase } from "./StayEditor";
 
 type Step = "home" | "select" | "review" | "guest" | "booking";
 
@@ -72,7 +72,7 @@ export function BookingApp() {
             prev.length > 0 &&
             (c.hotels.length > 1 || prev.length === 1) &&
             prev.every((p) => c.hotels.some((h) => h.hotelId === p.hotelId) && p.checkin > today);
-          return usable ? prev : [newStay(c)];
+          return usable ? prev.map((p) => fitStay(p, c)) : [newStay(c)];
         });
         const active = s.bookings.find((b) => ["SOFT_BOOKED", "PAID", "CONFIRMING"].includes(b.status));
         if (active) {
@@ -84,6 +84,34 @@ export function BookingApp() {
       })
       .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Couldn't load the booking page."));
   }, [api, setStays]);
+
+  // Keep hotel/room limits live: the hotel can change them in the PMS while this page is open.
+  // Re-read every 30 s and when the guest comes back to the tab; on the selection step, re-fit
+  // the current choices (later steps are re-validated by the server before booking).
+  const stepRef = useRef(step);
+  stepRef.current = step;
+  const loaded = !!catalog;
+  useEffect(() => {
+    if (!loaded) return;
+    const refresh = () =>
+      api
+        .catalog()
+        .then((c) => {
+          if (!c.hotels.length) return;
+          setCatalog(c);
+          if (stepRef.current === "select") {
+            setStays((prev) => (c.hotels.length > 1 ? prev : prev.slice(0, 1)).map((p) => fitStay(p, c)));
+          }
+        })
+        .catch(() => {});
+    const t = setInterval(refresh, 30_000);
+    const onVisible = () => document.visibilityState === "visible" && refresh();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [loaded, api, setStays]);
 
   const onBookingChange = useCallback((b: Booking) => {
     setBooking(b);

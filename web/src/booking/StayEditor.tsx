@@ -150,11 +150,26 @@ export function StayEditor({ index, stay, catalog, showTitle, onChange, onRemove
   );
 }
 
+/**
+ * Re-fits a stay to the hotel's current settings (they can change in the PMS while the page is open):
+ * unknown hotel/room type, too many rooms or nights, guests over the per-room limits.
+ */
+export function fitStay(stay: StaySel, catalog: CatalogData): StaySel {
+  const hotel = catalog.hotels.find((h) => h.hotelId === stay.hotelId);
+  if (!hotel) return newStay(catalog, undefined, stay.checkin > todayIso() ? stay.checkin : undefined);
+  const maxNights = hotel.maxRoomNights || 30;
+  const checkout = nightsBetween(stay.checkin, stay.checkout) > maxNights ? addDaysIso(stay.checkin, maxNights) : stay.checkout;
+  const rooms = stay.rooms
+    .slice(0, hotel.bookableRooms || stay.rooms.length)
+    .map((r) => clampRoom(hotel, hotel.roomTypes.some((t) => t.roomTypeId === r.roomTypeId) ? r : { ...r, roomTypeId: hotel.roomTypes[0]?.roomTypeId ?? "" }));
+  return { ...stay, checkout, rooms: rooms.length ? rooms : [newRoom(hotel)] };
+}
+
 /** Keeps guest counts within the room type's limits after a change. */
 function clampRoom(hotel: HotelInfo, r: RoomSel): RoomSel {
   const rt = hotel.roomTypes.find((x) => x.roomTypeId === r.roomTypeId);
   if (!rt) return r;
-  const adults = Math.max(1, Math.min(r.adults, rt.maxAdult || r.adults));
+  const adults = Math.max(1, Math.min(r.adults, rt.maxAdult || r.adults, rt.maximumPax || r.adults));
   const children = Math.max(0, Math.min(r.children, rt.maxChildren, (rt.maximumPax || 99) - adults));
   const infants = Math.max(0, Math.min(r.infants, rt.maxInfant));
   return { ...r, adults, children, infants };
