@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addDays, nightsOf, parseIso, toIso } from "../lib/dates.js";
 import type { Catalog } from "./catalog.js";
-import { componentsOf, minInventory, occupancyFor, selectedRates, validateSelection, type Selection } from "./pricing.js";
+import { componentsOf, minInventory, occupancyFor, selectedRates, softBookHotels, validateSelection, type Selection } from "./pricing.js";
 import type { TaxedRateLine } from "../pms/types.js";
 
 const today = parseIso("2026-10-07");
@@ -124,6 +124,26 @@ describe("componentsOf", () => {
       { label: "Child 2", amount: 1000 },
     ]);
     expect(parts.reduce((s, p) => s + p.amount, 0)).toBe(line.value);
+  });
+});
+
+describe("softBookHotels", () => {
+  it("sends one hotels[] entry per room, each with a single room type", () => {
+    const room = (roomTypeId: string, adults: number, amount: number) => ({
+      roomTypeId, adults, children: 0, infants: 0, roomTypeName: "X", occupancy: occupancyFor({ roomTypeId, adults, children: 0, infants: 0 }),
+      nights: [], value: 0, tax: 0, amount, pmsRates: [],
+    });
+    const quote = {
+      stays: [{ hotelId: "NH", hotelName: "DEMO HOTEL", checkin: "2026-10-26", checkout: "2026-10-27", nights: 1, mealPlan: "CP", mealPlanName: "CP",
+        rooms: [room("02", 3, 12921), room("02", 1, 7350)], value: 0, tax: 0, amount: 20271 }],
+      value: 0, tax: 0, amount: 20271, currency: "INR" as const, pricedAt: "",
+    };
+    const hotels = softBookHotels(quote);
+    expect(hotels).toHaveLength(2);
+    expect(hotels.map((h) => [h.hotelId, h.checkinDate, h.totalPax, h.totalAmount, h.roomTypes.length])).toEqual([
+      ["NH", "26-10-2026", 3, "12921.00", 1],
+      ["NH", "26-10-2026", 1, "7350.00", 1],
+    ]);
   });
 });
 

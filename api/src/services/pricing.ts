@@ -329,23 +329,30 @@ export async function priceSelection(sel: Selection, bookingId?: string): Promis
   };
 }
 
-/** Builds softbook hotels[] from a quote. */
+/**
+ * Builds softbook hotels[] from a quote: one hotels[] entry per room, each with a single room type
+ * (requested by the Hotelier team so the PMS applies each room's own GST slab).
+ */
 export function softBookHotels(quote: Quote): SoftBookHotel[] {
-  return quote.stays.map((stay) => ({
-    hotelId: stay.hotelId,
-    checkinDate: isoToPms(stay.checkin),
-    checkinTime: config.CHECKIN_TIME,
-    checkoutDate: isoToPms(stay.checkout),
-    checkoutTime: config.CHECKOUT_TIME,
-    totalPax: stay.rooms.reduce((n, r) => n + r.adults + r.children, 0),
-    totalAmount: stay.amount.toFixed(2),
-    roomTypes: stay.rooms.map((room) => ({
-      roomTypeId: room.roomTypeId,
-      ...room.occupancy,
-      twin: 0,
-      rates: room.pmsRates,
+  return quote.stays.flatMap((stay) =>
+    stay.rooms.map((room) => ({
+      hotelId: stay.hotelId,
+      checkinDate: isoToPms(stay.checkin),
+      checkinTime: config.CHECKIN_TIME,
+      checkoutDate: isoToPms(stay.checkout),
+      checkoutTime: config.CHECKOUT_TIME,
+      totalPax: room.adults + room.children,
+      totalAmount: room.amount.toFixed(2),
+      roomTypes: [
+        {
+          roomTypeId: room.roomTypeId,
+          ...room.occupancy,
+          twin: 0,
+          rates: room.pmsRates,
+        },
+      ],
     })),
-  }));
+  );
 }
 
 /** Strips PMS-only fields before sending a quote to the browser. */
