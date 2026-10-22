@@ -1,0 +1,70 @@
+# WALIVE on the IntelliJohn VPS, behind the existing Traefik (from the n8n stack).
+# One host serves both: the web app at /, the API at /api and /health.
+#
+#   cp .env.example .env   # fill in values
+#   docker compose up -d --build
+name: walive
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: walive
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: walive
+    volumes:
+      - walive-db:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U walive -d walive"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile.api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://walive:${DB_PASSWORD}@db:5432/walive
+      WEB_BASE_URL: https://${WALIVE_HOST}
+      CORS_ORIGINS: https://${WALIVE_HOST}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal, n8n_default]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=n8n_default
+      - traefik.http.routers.walive-api.rule=Host(`${WALIVE_HOST}`) && (PathPrefix(`/api`) || Path(`/health`))
+      - traefik.http.routers.walive-api.entrypoints=web,websecure
+      - traefik.http.routers.walive-api.tls=true
+      - traefik.http.routers.walive-api.tls.certresolver=mytlschallenge
+      - traefik.http.routers.walive-api.priority=100
+      - traefik.http.services.walive-api.loadbalancer.server.port=4000
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile.web
+    restart: unless-stopped
+    networks: [n8n_default]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=n8n_default
+      - traefik.http.routers.walive-web.rule=Host(`${WALIVE_HOST}`)
+      - traefik.http.routers.walive-web.entrypoints=web,websecure
+      - traefik.http.routers.walive-web.tls=true
+      - traefik.http.routers.walive-web.tls.certresolver=mytlschallenge
+      - traefik.http.routers.walive-web.priority=10
+      - traefik.http.services.walive-web.loadbalancer.server.port=80
+
+volumes:
+  walive-db:
+
+networks:
+  internal:
+  n8n_default:
+    external: true
